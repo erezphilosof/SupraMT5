@@ -27,6 +27,8 @@ double    gDayStartEquity = 0.0;
 double    gEntryPrice     = 0.0;
 int       gDcaLevel       = 0;
 datetime  gDayStartTime   = 0;
+int       gAtrHandle      = INVALID_HANDLE;
+int       gWprHandle      = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -35,7 +37,22 @@ int OnInit()
 {
    gDayStartTime = iTime(_Symbol,PERIOD_D1,0);
    gDayStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+   gAtrHandle = iATR(_Symbol,PERIOD_CURRENT,ATR_Period);
+   gWprHandle = iWPR(_Symbol,PERIOD_CURRENT,WPR_Period);
+   if(gAtrHandle==INVALID_HANDLE || gWprHandle==INVALID_HANDLE)
+      return(INIT_FAILED);
    return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   if(gAtrHandle!=INVALID_HANDLE)
+      IndicatorRelease(gAtrHandle);
+   if(gWprHandle!=INVALID_HANDLE)
+      IndicatorRelease(gWprHandle);
 }
 
 //+------------------------------------------------------------------+
@@ -50,7 +67,7 @@ double GetVWAP()
    for(int i=bars;i>=0;--i)
    {
       double price=(iHigh(_Symbol,0,i)+iLow(_Symbol,0,i)+iClose(_Symbol,0,i))/3.0;
-      double vol=iVolume(_Symbol,0,i);
+      double vol=(double)iVolume(_Symbol,0,i);
       sumPV+=price*vol;
       sumV+=vol;
    }
@@ -124,8 +141,12 @@ void OnTick()
 {
    CheckNewDay();
    double ema = iMA(_Symbol,0,EMA_Period,0,MODE_EMA,PRICE_CLOSE,0);
-   double atr = iATR(_Symbol,0,ATR_Period,0);
-   double wpr = iWPR(_Symbol,0,WPR_Period,0);
+   double atr = 0.0,wpr = 0.0;
+   double atrBuf[1],wprBuf[1];
+   if(CopyBuffer(gAtrHandle,0,0,1,atrBuf)==1)
+      atr = atrBuf[0];
+   if(CopyBuffer(gWprHandle,0,0,1,wprBuf)==1)
+      wpr = wprBuf[0];
    double vwap = GetVWAP();
    double price = SymbolInfoDouble(_Symbol,SYMBOL_BID);
 
