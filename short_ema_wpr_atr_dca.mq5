@@ -4,6 +4,7 @@
 CTrade      trade;
 int         wprHandle;
 int         atrHandle;
+int         maHandle;
 double      atrExitLevel = 0;
 datetime    shortEntryTime = 0;
 datetime    lastClosedBarTime = 0;
@@ -16,6 +17,9 @@ input double WPRExitThreshold    = -50.0;   // Exit threshold: if WPRVal < this,
 input int    ATRPeriod           = 14;      // Period for ATR
 input double ATRMultiplier       = 2.0;     // Multiplier for ATR-based exit (price - ATR*multiplier)
 input ENUM_TIMEFRAMES ATRTimeframe = PERIOD_CURRENT; // Timeframe for ATR exit calculation
+input ENUM_MA_METHOD MAType      = MODE_EMA;   // Moving average method
+input ENUM_TIMEFRAMES MATimeframe = PERIOD_CURRENT; // Timeframe for MA calculation
+input int    MALength            = 50;      // Period for moving average
 input double Lots                = 0.1;     // Trade size
 input int    Slippage            = 5;       // Slippage in points       // Slippage in points
 
@@ -36,6 +40,12 @@ int OnInit()
    atrHandle = iATR(_Symbol, ATRTimeframe, ATRPeriod);
    if(atrHandle == INVALID_HANDLE)
       return(INIT_FAILED);
+
+   // Create Moving Average indicator
+   maHandle = iMA(_Symbol, MATimeframe, MALength, 0, MAType, PRICE_CLOSE);
+   if(maHandle == INVALID_HANDLE)
+      return(INIT_FAILED);
+   ChartIndicatorAdd(0, 0, maHandle);
 
    // Plot entry threshold line
    const string entryLine = "WPR_Entry_Threshold";
@@ -89,13 +99,20 @@ void OnTick()
    double wprRaw = bufWPR[0];
    double wprVal = NormalizeWPR ? -wprRaw : wprRaw;
 
-   // Debug print
-   PrintFormat("BarClose %s: WPR=%.2f (Entry=%.2f, Exit=%.2f)",
-               TimeToString(closedTime, TIME_DATE|TIME_MINUTES),
-               wprVal, WPREntryThreshold, WPRExitThreshold);
+   // Read MA value at closed bar
+   double bufMA[1];
+   if(CopyBuffer(maHandle, 0, 1, 1, bufMA) != 1) return;
+   double maVal = bufMA[0];
+   double closePrice = iClose(_Symbol, PERIOD_CURRENT, 1);
 
-   // Entry logic: short when WPR > entry threshold
-   if(wprVal > WPREntryThreshold && !HasPosition(POSITION_TYPE_SELL))
+   // Debug print
+   PrintFormat("BarClose %s: WPR=%.2f (Entry=%.2f, Exit=%.2f) MA=%.5f Close=%.5f",
+               TimeToString(closedTime, TIME_DATE|TIME_MINUTES),
+               wprVal, WPREntryThreshold, WPRExitThreshold,
+               maVal, closePrice);
+
+   // Entry logic: short when WPR > entry threshold and price below MA
+   if(closePrice < maVal && wprVal > WPREntryThreshold && !HasPosition(POSITION_TYPE_SELL))
    {
       if(HasPosition(POSITION_TYPE_BUY)) trade.PositionClose(_Symbol);
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
